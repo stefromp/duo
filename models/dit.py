@@ -119,16 +119,12 @@ def rotate_half(x):
 
 def apply_rotary_emb_torch_fallback(x, cos, sin):
   """Fallback rotary embedding implementation when FlashAttention is not available."""
-  # x: [batch, seq_len, head_dim]
+  # x: [batch, seq_len, n_heads, head_dim]
   # cos, sin: [seq_len, head_dim//2]
   
-  # Ensure cos and sin have correct shape for broadcasting
-  # cos/sin should be [1, seq_len, 1, head_dim//2] or [seq_len, head_dim//2]
-  # x is [batch, seq_len, head_dim]
-  if cos.dim() == 2:
-    # Expand to [1, seq_len, head_dim//2]
-    cos = cos.unsqueeze(0)
-    sin = sin.unsqueeze(0)
+  # Reshape cos/sin to [1, seq_len, 1, head_dim//2] for broadcasting
+  cos = cos.unsqueeze(0).unsqueeze(2)  # [seq_len, head_dim//2] -> [1, seq_len, 1, head_dim//2]
+  sin = sin.unsqueeze(0).unsqueeze(2)
   
   # Split x into rotation part and pass-through part
   # Rotation is applied to first cos.shape[-1]*2 dimensions
@@ -137,7 +133,7 @@ def apply_rotary_emb_torch_fallback(x, cos, sin):
   x_pass = x[..., rot_dim:]
   
   # Duplicate cos/sin to match rotation dimensions
-  cos_full = torch.cat([cos, cos], dim=-1)
+  cos_full = torch.cat([cos, cos], dim=-1)  # [1, seq_len, 1, head_dim]
   sin_full = torch.cat([sin, sin], dim=-1)
   
   # Apply rotation
