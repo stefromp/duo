@@ -476,15 +476,18 @@ def get_dataset(dataset_name,
       SUBSET_NUM = int(SUBSET_NUM)
       # Use 90% of subset for training
       train_count = int(SUBSET_NUM * 0.9)
-      subset_split = f"train[:{train_count}]"
-      LOGGER.info(f'Using OpenWebText subset: {train_count} training examples')
+      LOGGER.info(f'Using OpenWebText subset: {train_count} training examples (streaming mode)')
+      # Use streaming mode to avoid downloading entire dataset
       dataset = datasets.load_dataset(
         'openwebtext',
-        split=subset_split,
+        split='train',
         cache_dir=cache_dir,
-        streaming=False,  # Load subset in memory for better performance
-        revision=revision,
-        num_proc=num_proc)
+        streaming=True,  # Stream to avoid disk space issues
+        revision=revision)
+      # Take only the first train_count examples
+      dataset = dataset.take(train_count)
+      # Convert to regular dataset for processing
+      dataset = datasets.Dataset.from_dict({k: [item[k] for item in dataset] for k in ['text']})
     else:
       # Default behavior: use full dataset with last 100k reserved for validation
       dataset = datasets.load_dataset(
@@ -502,15 +505,18 @@ def get_dataset(dataset_name,
       # Use remaining 10% of subset for validation
       train_count = int(SUBSET_NUM * 0.9)
       val_count = SUBSET_NUM - train_count
-      subset_split = f"train[{train_count}:{train_count+val_count}]"
-      LOGGER.info(f'Using OpenWebText subset: {val_count} validation examples')
+      LOGGER.info(f'Using OpenWebText subset: {val_count} validation examples (streaming mode)')
+      # Use streaming mode to avoid downloading entire dataset
       dataset = datasets.load_dataset(
         'openwebtext',
-        split=subset_split,
+        split='train',
         cache_dir=cache_dir,
-        streaming=False,
-        revision=revision,
-        num_proc=1)  # Small validation set, no need for multi-processing
+        streaming=True,
+        revision=revision)
+      # Skip train_count examples, then take val_count examples
+      dataset = dataset.skip(train_count).take(val_count)
+      # Convert to regular dataset for processing
+      dataset = datasets.Dataset.from_dict({k: [item[k] for item in dataset] for k in ['text']})
     else:
       # Default behavior: use last 100k for validation
       dataset = datasets.load_dataset(
