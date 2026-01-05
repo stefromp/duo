@@ -707,22 +707,33 @@ def get_tokenizer(config):
 
 def get_dataloaders(config, tokenizer, skip_train=False,
                     skip_valid=False, valid_seed=None):
-  num_gpus = torch.cuda.device_count()
+  # Use trainer.devices instead of torch.cuda.device_count() to handle single device strategy
+  num_devices = config.trainer.devices if hasattr(config.trainer, 'devices') else torch.cuda.device_count()
+  # Handle single device strategy where devices might be a string like "1" or an int
+  if isinstance(num_devices, str):
+    num_devices = int(num_devices) if num_devices.isdigit() else 1
+  elif isinstance(num_devices, list):
+    num_devices = len(num_devices)
+  
   assert (config.loader.global_batch_size
           == (config.loader.batch_size
               * config.trainer.num_nodes
-              * num_gpus
-              * config.trainer.accumulate_grad_batches))
+              * num_devices
+              * config.trainer.accumulate_grad_batches)), \
+          f"global_batch_size ({config.loader.global_batch_size}) must equal " \
+          f"batch_size ({config.loader.batch_size}) * num_nodes ({config.trainer.num_nodes}) * " \
+          f"devices ({num_devices}) * accumulate_grad_batches ({config.trainer.accumulate_grad_batches})"
+  
   if config.loader.global_batch_size % (
-    num_gpus * config.trainer.accumulate_grad_batches) != 0:
+    num_devices * config.trainer.accumulate_grad_batches) != 0:
     raise ValueError(
-      f'Train Batch Size {config.training.batch_size}'
-      f'not divisible by {num_gpus} gpus with accumulation '
+      f'Train Batch Size {config.loader.batch_size} '
+      f'not divisible by {num_devices} devices with accumulation '
       f'{config.trainer.accumulate_grad_batches}.')
-  if config.loader.eval_global_batch_size % num_gpus != 0:
+  if config.loader.eval_global_batch_size % num_devices != 0:
     raise ValueError(
-      f'Eval Batch Size for {config.eval.batch_size} '
-      f'not divisible by {num_gpus}.')
+      f'Eval Batch Size {config.loader.eval_batch_size} '
+      f'not divisible by {num_devices} devices.')
   if skip_train:
     train_set = None
   else:
